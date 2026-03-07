@@ -1,4 +1,4 @@
-import { sendEmail } from "./email";
+import { sendEmail, escapeHtml } from "./email";
 import type { User } from "better-auth";
 
 export interface VerificationEmailParams {
@@ -7,8 +7,25 @@ export interface VerificationEmailParams {
   token: string;
 }
 
+/** Basic email format check */
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email?.trim() ?? "");
+}
+
 export async function sendVerificationEmail(params: VerificationEmailParams): Promise<void> {
   const { user, url } = params;
+
+  if (!user?.email?.trim()) {
+    throw new Error("Verification email: user or user.email is required");
+  }
+  if (!url?.trim()) {
+    throw new Error("Verification email: url is required");
+  }
+  if (!isValidEmail(user.email)) {
+    throw new Error(`Verification email: invalid email address: ${user.email}`);
+  }
+
+  const safeName = escapeHtml(String(user.name || "there").trim());
   const appName = process.env.APP_NAME || "App";
 
   const html = `
@@ -24,7 +41,7 @@ export async function sendVerificationEmail(params: VerificationEmailParams): Pr
     <h1 style="color: white; margin: 0; font-size: 24px;">Verify your email</h1>
   </div>
   <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-    <p style="margin: 0 0 20px;">Hi ${user.name || "there"},</p>
+    <p style="margin: 0 0 20px;">Hi ${safeName},</p>
     <p style="margin: 0 0 20px;">Thanks for signing up for ${appName}. Please verify your email address by clicking the button below:</p>
     <p style="text-align: center; margin: 30px 0;">
       <a href="${url}" style="display: inline-block; background: #667eea; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600;">Verify Email</a>
@@ -38,7 +55,7 @@ export async function sendVerificationEmail(params: VerificationEmailParams): Pr
   `.trim();
 
   const text = `
-Hi ${user.name || "there"},
+Hi ${user.name?.trim() || "there"},
 
 Thanks for signing up for ${appName}. Please verify your email address by visiting this link:
 
@@ -56,6 +73,6 @@ This link will expire in 1 hour. If you didn't create an account, you can safely
     });
   } catch (err) {
     console.error("[Verification Email] Failed to send:", err);
-    throw err;
+    throw err; // Propagate for sendEmailInBackground to catch and log
   }
 }

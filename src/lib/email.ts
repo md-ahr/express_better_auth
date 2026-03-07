@@ -1,6 +1,16 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 
+/** Escape HTML to prevent XSS in email templates */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 let transporter: Transporter | null = null;
 
 function getTransporter(): Transporter | null {

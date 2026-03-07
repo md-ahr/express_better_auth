@@ -47,6 +47,8 @@ app.use(helmet());
 app.use(morgan("dev"));
 app.use(cors(corsOptions));
 
+// NOTE: Do NOT add express.json() before auth routes - better-auth reads raw body for POST
+
 // Custom /me route first
 app.use(AUTH_BASE, authRoute);
 

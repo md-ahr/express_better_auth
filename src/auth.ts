@@ -6,6 +6,7 @@ import { ENV } from "./config/env";
 import { passwordStrengthPlugin } from "./plugins/password-strength";
 import { sendVerificationEmail as sendVerificationEmailFn } from "./lib/verification-email";
 import { sendResetPasswordEmail } from "./lib/reset-password-email";
+import { sendEmailInBackground } from "./lib/email-background";
 
 export const auth = betterAuth({
   plugins: [passwordStrengthPlugin()],
@@ -23,19 +24,50 @@ export const auth = betterAuth({
   basePath: "/api/v1/auth",
   emailAndPassword: {
     enabled: true,
-    sendResetPassword: async ({ user, url }) => {
-      await sendResetPasswordEmail({ user, url, token: "" });
+    sendResetPassword: ({ user, url }) => {
+      if (!user?.email || !url?.trim()) {
+        console.warn("[Forgot Password] Skipped email: missing user, email, or url", {
+          hasUser: !!user,
+          hasUrl: !!url?.trim(),
+        });
+        return;
+      }
+      sendEmailInBackground(
+        () => sendResetPasswordEmail({ user, url, token: "" }),
+        { type: "reset-password", email: user.email, userId: user.id }
+      );
     },
     resetPasswordTokenExpiresIn: 3600, // 1 hour
   },
   emailVerification: {
     sendOnSignUp: true,
     expiresIn: 3600, // 1h
-    sendVerificationEmail: async ({ user, url }) => {
-      await sendVerificationEmailFn({ user, url, token: "" });
+    sendVerificationEmail: ({ user, url }) => {
+      if (!user?.email || !url?.trim()) {
+        console.warn("[Verification] Skipped email: missing user, email, or url", {
+          hasUser: !!user,
+          hasUrl: !!url?.trim(),
+        });
+        return;
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.log("[Verification] Sending email to:", user.email);
+      }
+      sendEmailInBackground(
+        () => sendVerificationEmailFn({ user, url, token: "" }),
+        { type: "verification", email: user.email, userId: user.id }
+      );
     },
   },
   trustedOrigins: [ENV.BETTER_AUTH_URL, ...ENV.ALLOWED_ORIGINS],
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24, // refresh session if older than 1 day
+    cookieCache: {
+      enabled: true,
+      maxAge: 60 * 5, // 5 minutes - cache session in cookie for faster reads, refresh when stale
+    },
+  },
   advanced: {
     defaultCookieAttributes: {
       sameSite: "lax",

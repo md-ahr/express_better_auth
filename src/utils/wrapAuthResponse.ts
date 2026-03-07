@@ -6,18 +6,34 @@ const AUTH_SUCCESS_MESSAGES: Record<string, string> = {
   "/request-password-reset": "If this email exists in our system, check your inbox for the password reset link.",
   "/verify-password": "Password verified successfully.",
   "/sign-out": "You have been signed out successfully.",
+  "/logout": "You have been signed out successfully.",
+  "/get-session": "Session refreshed successfully.",
 };
+
+/** Get message for path, supporting prefix match (e.g. /reset-password/TOKEN -> /reset-password) */
+function getMessageForPath(path: string, obj?: Record<string, unknown>): string {
+  const pathSuffix = path.split("/auth").pop()?.split("?")[0] || "";
+  const exact = AUTH_SUCCESS_MESSAGES[pathSuffix];
+  if (exact) return exact;
+  // Prefix match for dynamic routes like /reset-password/abc123
+  for (const [key, msg] of Object.entries(AUTH_SUCCESS_MESSAGES)) {
+    if (pathSuffix.startsWith(key)) return msg;
+  }
+  return (obj?.message as string) || "Operation completed successfully.";
+}
 
 /** Normalize better-auth minimal success responses to our format with a meaningful message */
 function normalizeSuccessData(parsed: unknown, path: string): unknown {
   const obj = parsed as Record<string, unknown> | null;
   if (!obj || typeof obj !== "object") return parsed;
+  const getMessage = () => getMessageForPath(path, obj!);
   // { status: true } or { status: true, message?: string } -> normalize to our format
   if (obj.status === true && Object.keys(obj).length <= 2) {
-    const pathSuffix = path.split("/auth").pop()?.split("?")[0] || "";
-    const message =
-      (obj.message as string) || AUTH_SUCCESS_MESSAGES[pathSuffix] || "Operation completed successfully.";
-    return { message };
+    return { message: getMessage() };
+  }
+  // better-auth sign-out returns { success: true }
+  if (obj.success === true && Object.keys(obj).length <= 2) {
+    return { message: getMessage() };
   }
   return parsed;
 }
@@ -25,7 +41,7 @@ function normalizeSuccessData(parsed: unknown, path: string): unknown {
 /**
  * Transforms parsed JSON into our API format: { status, data, error }
  */
-function transformToApiFormat(parsed: unknown, statusCode: number, path: string) {
+export function transformToApiFormat(parsed: unknown, statusCode: number, path: string) {
   const isSuccess = statusCode >= 200 && statusCode < 300;
   if (isSuccess) {
     const data = normalizeSuccessData(parsed, path);
@@ -39,15 +55,42 @@ function transformToApiFormat(parsed: unknown, statusCode: number, path: string)
   return { status: false, data: null, error: message };
 }
 
-/**
- * Wraps the response to transform better-auth output (login, register, sign-out, etc.)
- * into our API format: { status: boolean, data: T | null, error: string | null }
- * @param path - Request path (e.g. /api/v1/auth/reset-password) for endpoint-specific messages
- */
+/** Apply structured format transformation to a response body */
+function applyTransform(
+  res: ServerResponse,
+  body: unknown,
+  path: string,
+  originalEnd: (chunk?: any, encoding?: any, cb?: any) => ServerResponse
+): ServerResponse {
+  const statusCode = res.statusCode ?? 500;
+  const transformed = transformToApiFormat(body, statusCode, path);
+  res.removeHeader("Content-Length");
+  res.setHeader("Content-Type", "application/json");
+  return originalEnd(JSON.stringify(transformed), "utf8", undefined);
+}
+
 export function wrapAuthResponse(res: ServerResponse, path = ""): ServerResponse {
   const chunks: Buffer[] = [];
   const originalWrite = res.write.bind(res);
   const originalEnd = res.end.bind(res);
+
+  // Override res.json and res.send (Express) - better-auth adapter may use these
+  const expressRes = res as ServerResponse & { json?: (body: any) => void; send?: (body: any) => void };
+  if (typeof expressRes.json === "function") {
+    const originalJson = expressRes.json.bind(expressRes);
+    expressRes.json = function (body: any) {
+      return applyTransform(res, body, path, originalEnd);
+    };
+  }
+  if (typeof expressRes.send === "function") {
+    const originalSend = expressRes.send.bind(expressRes);
+    expressRes.send = function (body: any) {
+      if (typeof body === "object" && body !== null && !Buffer.isBuffer(body)) {
+        return applyTransform(res, body, path, originalEnd);
+      }
+      return originalSend(body);
+    };
+  }
 
   res.write = function (
     chunk: any,
@@ -92,9 +135,9 @@ export function wrapAuthResponse(res: ServerResponse, path = ""): ServerResponse
         (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
         (trimmed.startsWith("[") && trimmed.endsWith("]"));
 
-      if (looksLikeJson) {
+      if (looksLikeJson || trimmed === "null") {
         try {
-          const parsed = JSON.parse(fullBody);
+          const parsed = trimmed === "null" ? null : JSON.parse(fullBody);
           const statusCode = res.statusCode ?? 500;
           const transformed = transformToApiFormat(parsed, statusCode, path);
           res.removeHeader("Content-Length");
@@ -106,8 +149,17 @@ export function wrapAuthResponse(res: ServerResponse, path = ""): ServerResponse
       }
     }
 
+    // Fallback: 2xx with no body - send default structured response
+    const statusCode = res.statusCode ?? 500;
+    if (statusCode >= 200 && statusCode < 300 && !fullBody?.trim()) {
+      const transformed = transformToApiFormat(null, statusCode, path);
+      res.removeHeader("Content-Length");
+      res.setHeader("Content-Type", "application/json");
+      return originalEnd(JSON.stringify(transformed), enc, cb);
+    }
+
     const toSend = fullBody ?? (body !== undefined && body !== null ? body : undefined);
-    return originalEnd(toSend, enc, cb);
+    return originalEnd(toSend ?? "", enc, cb);
   };
 
   return res;

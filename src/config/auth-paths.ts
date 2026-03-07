@@ -9,7 +9,7 @@ export const AUTH_PATH_MAP: Record<string, string> = {
   "/send-verification-email": "/send-verification-email", // same
   "/verify-email": "/verify-email", // same
   "/reset-password": "/reset-password", // same
-  "/sign-out": "/sign-out", // same
+  "/logout": "/sign-out", // alias for sign-out
   "/me": "/get-session", // better-auth uses get-session
 };
 

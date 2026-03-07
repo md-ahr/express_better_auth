@@ -1,4 +1,4 @@
-import { sendEmail } from "./email";
+import { sendEmail, escapeHtml } from "./email";
 import type { User } from "better-auth";
 
 export interface ResetPasswordEmailParams {
@@ -7,10 +7,27 @@ export interface ResetPasswordEmailParams {
   token: string;
 }
 
+/** Basic email format check */
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email?.trim() ?? "");
+}
+
 export async function sendResetPasswordEmail(
   params: ResetPasswordEmailParams
 ): Promise<void> {
   const { user, url } = params;
+
+  if (!user?.email?.trim()) {
+    throw new Error("Reset password email: user or user.email is required");
+  }
+  if (!url?.trim()) {
+    throw new Error("Reset password email: url is required");
+  }
+  if (!isValidEmail(user.email)) {
+    throw new Error(`Reset password email: invalid email address: ${user.email}`);
+  }
+
+  const safeName = escapeHtml(String(user.name || "there").trim());
   const appName = process.env.APP_NAME || "App";
 
   const html = `
@@ -26,7 +43,7 @@ export async function sendResetPasswordEmail(
     <h1 style="color: white; margin: 0; font-size: 24px;">Reset your password</h1>
   </div>
   <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-    <p style="margin: 0 0 20px;">Hi ${user.name || "there"},</p>
+    <p style="margin: 0 0 20px;">Hi ${safeName},</p>
     <p style="margin: 0 0 20px;">We received a request to reset your password for ${appName}. Click the button below to choose a new password:</p>
     <p style="text-align: center; margin: 30px 0;">
       <a href="${url}" style="display: inline-block; background: #667eea; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600;">Reset Password</a>
@@ -40,7 +57,7 @@ export async function sendResetPasswordEmail(
   `.trim();
 
   const text = `
-Hi ${user.name || "there"},
+Hi ${user.name?.trim() || "there"},
 
 We received a request to reset your password for ${appName}. Visit this link to choose a new password:
 
@@ -58,6 +75,6 @@ This link will expire in 1 hour. If you didn't request a password reset, you can
     });
   } catch (err) {
     console.error("[Reset Password Email] Failed to send:", err);
-    throw err;
+    throw err; // Propagate for sendEmailInBackground to catch and log
   }
 }
