@@ -5,6 +5,7 @@ import * as schema from "./db/auth-schema";
 import { ENV } from "./config/env";
 import { passwordStrengthPlugin } from "./plugins/password-strength";
 import { sendVerificationEmail as sendVerificationEmailFn } from "./lib/verification-email";
+import { sendResetPasswordEmail } from "./lib/reset-password-email";
 
 export const auth = betterAuth({
   plugins: [passwordStrengthPlugin()],
@@ -22,6 +23,10 @@ export const auth = betterAuth({
   basePath: "/api/v1/auth",
   emailAndPassword: {
     enabled: true,
+    sendResetPassword: async ({ user, url }) => {
+      await sendResetPasswordEmail({ user, url, token: "" });
+    },
+    resetPasswordTokenExpiresIn: 3600, // 1 hour
   },
   emailVerification: {
     sendOnSignUp: true,
