@@ -6,6 +6,7 @@ A production-ready REST API template built with Express.js, TypeScript, and Driz
 
 - **TypeScript** — Full type safety with strict mode
 - **Express 5** — Fast, unopinionated web framework
+- **Better Auth** — Full-featured auth (email/password, OAuth, magic links)
 - **Drizzle ORM** — Lightweight ORM with PostgreSQL
 - **Standardized API Responses** — Consistent `{ status, data, error }` format
 - **Security** — Helmet, CORS, rate limiting (100 req/15 min per IP)
@@ -17,12 +18,13 @@ A production-ready REST API template built with Express.js, TypeScript, and Driz
 ```
 src/
 ├── app.ts              # Express app setup, middleware, routes
+├── auth.ts             # Better Auth config (Drizzle adapter)
 ├── server.ts           # Entry point
 ├── config/
 │   └── env.ts          # Environment validation
 ├── db/
 │   ├── index.ts        # Drizzle client
-│   └── schema.ts       # Database schema
+│   └── auth-schema.ts  # Better Auth tables (user, session, account, verification)
 ├── middleware/
 │   └── error.middleware.ts
 ├── routes/
@@ -57,6 +59,8 @@ NODE_ENV=development
 PORT=3000
 DATABASE_URL=postgresql://user:password@localhost:5432/your_db
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+BETTER_AUTH_SECRET=your-secret-min-32-chars
+BETTER_AUTH_URL=http://localhost:3000
 ```
 
 ### 3. Push database schema
@@ -83,8 +87,12 @@ The server runs at `http://localhost:3000` (or your configured `PORT`).
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/v1/health` | Health check (database + server status) |
-| POST | `/api/v1/auth/register` | User registration |
-| POST | `/api/v1/auth/login` | User login |
+| GET | `/api/v1/auth/me` | Current session (requires auth cookie) |
+| POST | `/api/auth/sign-up/email` | Email/password registration |
+| POST | `/api/auth/sign-in/email` | Email/password login |
+| POST | `/api/auth/sign-out` | Sign out |
+
+See [Better Auth docs](https://better-auth.com/docs) for the full API.
 
 ## Response Format
 
@@ -125,6 +133,8 @@ All responses follow a consistent structure:
 | `PORT` | Yes | Server port (e.g. `3000`) |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `ALLOWED_ORIGINS` | Yes | Comma-separated CORS origins |
+| `BETTER_AUTH_SECRET` | Yes | Secret for signing cookies/tokens (min 32 chars) |
+| `BETTER_AUTH_URL` | Yes | App URL (e.g. `http://localhost:3000`) |
 
 ## License
 

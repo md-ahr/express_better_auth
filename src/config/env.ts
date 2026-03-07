@@ -11,4 +11,6 @@ export const ENV = {
     PORT: Number(getEnv('PORT')),
     ALLOWED_ORIGINS: getEnv('ALLOWED_ORIGINS').split(','),
     DATABASE_URL: getEnv('DATABASE_URL'),
+    BETTER_AUTH_SECRET: getEnv('BETTER_AUTH_SECRET'),
+    BETTER_AUTH_URL: getEnv('BETTER_AUTH_URL'),
 } as const;

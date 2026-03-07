@@ -1,14 +1,20 @@
-import express, { type Request, type Router } from "express";
-import { successResponse } from "../utils/response";
+import express, { type Router } from "express";
+import { fromNodeHeaders } from "better-auth/node";
+import { auth } from "../auth";
+import { successResponse, errorResponse } from "../utils/response";
 
-const router: Router = express.Router()
+const router: Router = express.Router();
 
-router.post("/register", async (_req: Request, res) => {
-    successResponse(res, { message: "User registered successfully" });
-})
+router.get("/me", async (req, res) => {
+    const session = await auth.api.getSession({
+        headers: fromNodeHeaders(req.headers),
+    });
 
-router.post("/login", async (_req: Request, res) => {
-    successResponse(res, { message: "User logged in successfully" });
-})
+    if (!session) {
+        return errorResponse(res, "Unauthorized", 401);
+    }
+
+    successResponse(res, session);
+});
 
 export default router;
