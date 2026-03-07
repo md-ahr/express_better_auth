@@ -4,6 +4,7 @@ import { db } from "./db";
 import * as schema from "./db/auth-schema";
 import { ENV } from "./config/env";
 import { passwordStrengthPlugin } from "./plugins/password-strength";
+import { sendVerificationEmail as sendVerificationEmailFn } from "./lib/verification-email";
 
 export const auth = betterAuth({
   plugins: [passwordStrengthPlugin()],
@@ -21,6 +22,13 @@ export const auth = betterAuth({
   basePath: "/api/v1/auth",
   emailAndPassword: {
     enabled: true,
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    expiresIn: 3600, // 1h
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendVerificationEmailFn({ user, url, token: "" });
+    },
   },
   trustedOrigins: [ENV.BETTER_AUTH_URL, ...ENV.ALLOWED_ORIGINS],
   advanced: {

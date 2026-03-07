@@ -88,9 +88,11 @@ The server runs at `http://localhost:3000` (or your configured `PORT`).
 |--------|----------|-------------|
 | GET | `/api/v1/health` | Health check (database + server status) |
 | GET | `/api/v1/auth/me` | Current session (requires auth cookie) |
-| POST | `/api/auth/sign-up/email` | Email/password registration |
-| POST | `/api/auth/sign-in/email` | Email/password login |
-| POST | `/api/auth/sign-out` | Sign out |
+| POST | `/api/v1/auth/register` | Email/password registration |
+| POST | `/api/v1/auth/login` | Email/password login |
+| POST | `/api/v1/auth/sign-out` | Sign out |
+| POST | `/api/v1/auth/send-verification-email` | Send verification email |
+| GET | `/api/v1/auth/verify-email` | Verify email (token in query) |
 
 See [Better Auth docs](https://better-auth.com/docs) for the full API.
 
@@ -135,6 +137,11 @@ All responses follow a consistent structure:
 | `ALLOWED_ORIGINS` | Yes | Comma-separated CORS origins |
 | `BETTER_AUTH_SECRET` | Yes | Secret for signing cookies/tokens (min 32 chars) |
 | `BETTER_AUTH_URL` | Yes | App URL (e.g. `http://localhost:3000`) |
+| `SMTP_HOST` | Prod | SMTP server host (e.g. `smtp.gmail.com`) |
+| `SMTP_PORT` | Prod | SMTP port (587 for TLS, 465 for SSL) |
+| `SMTP_USER` | Prod | SMTP username |
+| `SMTP_PASS` | Prod | SMTP password |
+| `SMTP_FROM` | No | From address (defaults to `SMTP_USER`) |
 
 ## License
 
