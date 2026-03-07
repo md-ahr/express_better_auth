@@ -6,34 +6,49 @@ A production-ready REST API template built with Express.js, TypeScript, and Driz
 
 - **TypeScript** — Full type safety with strict mode
 - **Express 5** — Fast, unopinionated web framework
-- **Better Auth** — Full-featured auth (email/password, OAuth, magic links)
+- **Better Auth** — Full-featured auth (email/password, email verification, password reset)
 - **Drizzle ORM** — Lightweight ORM with PostgreSQL
 - **Standardized API Responses** — Consistent `{ status, data, error }` format
+- **Swagger / OpenAPI** — Interactive API docs at `/api-docs`
 - **Security** — Helmet, CORS, rate limiting (100 req/15 min per IP)
 - **Health Check** — `/api/v1/health` for load balancers and monitoring
 - **Global Error Handling** — User-friendly error messages, no stack trace leakage
+- **Background Email** — Verification and reset-password emails sent asynchronously
+- **Password Strength** — Configurable validation via plugin
 
 ## Project Structure
 
 ```
 src/
-├── app.ts              # Express app setup, middleware, routes
-├── auth.ts             # Better Auth config (Drizzle adapter)
-├── server.ts           # Entry point
+├── app.ts                 # Express app, middleware, auth handler
+├── auth.ts                # Better Auth config (Drizzle adapter)
+├── server.ts              # Entry point
 ├── config/
-│   └── env.ts          # Environment validation
+│   ├── env.ts             # Environment validation
+│   ├── auth-paths.ts      # Path mapping (e.g. /login → /sign-in/email)
+│   └── openapi.ts         # OpenAPI 3.0 spec for Swagger
 ├── db/
-│   ├── index.ts        # Drizzle client
-│   └── auth-schema.ts  # Better Auth tables (user, session, account, verification)
+│   ├── index.ts           # Drizzle client
+│   └── auth-schema.ts     # Better Auth tables
+├── lib/
+│   ├── email.ts           # Nodemailer transport
+│   ├── email-background.ts # Async email sending
+│   ├── verification-email.ts
+│   └── reset-password-email.ts
 ├── middleware/
 │   └── error.middleware.ts
+├── plugins/
+│   └── password-strength.ts
 ├── routes/
-│   ├── auth.route.ts   # /api/v1/auth
-│   └── health.route.ts # /api/v1/health
+│   ├── auth.route.ts      # /api/v1/auth/me (custom)
+│   └── health.route.ts    # /api/v1/health
 └── utils/
-    ├── appError.ts     # Custom error class
+    ├── appError.ts
+    ├── authHandlerProxy.ts   # Response proxy for auth endpoints
     ├── catchAsync.ts
-    └── response.ts     # successResponse, errorResponse
+    ├── response.ts
+    ├── transformAuthResponse.ts
+    └── wrapAuthResponse.ts   # Wraps auth responses to { status, data, error }
 ```
 
 ## Prerequisites
@@ -56,11 +71,19 @@ Create a `.env` file in the project root:
 
 ```env
 NODE_ENV=development
-PORT=3000
+PORT=8000
 DATABASE_URL=postgresql://user:password@localhost:5432/your_db
 ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 BETTER_AUTH_SECRET=your-secret-min-32-chars
-BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:8000
+
+# SMTP (required for verification & reset-password emails)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your-smtp-user
+SMTP_PASS=your-smtp-password
+EMAIL_FROM=noreply@example.com
 ```
 
 ### 3. Push database schema
@@ -80,7 +103,13 @@ pnpm build
 pnpm start
 ```
 
-The server runs at `http://localhost:3000` (or your configured `PORT`).
+The server runs at `http://localhost:8000` (or your configured `PORT`).
+
+## API Documentation
+
+Interactive Swagger UI is available at:
+
+**http://localhost:8000/api-docs**
 
 ## API Endpoints
 
@@ -88,13 +117,16 @@ The server runs at `http://localhost:3000` (or your configured `PORT`).
 |--------|----------|-------------|
 | GET | `/api/v1/health` | Health check (database + server status) |
 | GET | `/api/v1/auth/me` | Current session (requires auth cookie) |
-| POST | `/api/v1/auth/register` | Email/password registration |
-| POST | `/api/v1/auth/login` | Email/password login |
-| POST | `/api/v1/auth/sign-out` | Sign out |
-| POST | `/api/v1/auth/send-verification-email` | Send verification email |
+| POST | `/api/v1/auth/login` | Sign in with email/password |
+| POST | `/api/v1/auth/register` | Sign up with email/password |
+| POST | `/api/v1/auth/logout` | Sign out |
+| POST | `/api/v1/auth/forgot-password` | Request password reset email |
+| POST | `/api/v1/auth/reset-password` | Reset password (token + newPassword) |
+| GET | `/api/v1/auth/reset-password/:token` | Validate reset token |
+| POST | `/api/v1/auth/send-verification-email` | Send verification email (requires session) |
 | GET | `/api/v1/auth/verify-email` | Verify email (token in query) |
 
-See [Better Auth docs](https://better-auth.com/docs) for the full API.
+Path aliases are mapped internally (e.g. `/login` → `/sign-in/email`, `/logout` → `/sign-out`). See [Better Auth docs](https://better-auth.com/docs) for details.
 
 ## Response Format
 
@@ -118,10 +150,13 @@ All responses follow a consistent structure:
 }
 ```
 
-## Database Commands
+## Scripts
 
 | Command | Description |
 |---------|-------------|
+| `pnpm dev` | Start dev server with hot reload (tsx watch) |
+| `pnpm build` | Bundle for production (esbuild) |
+| `pnpm start` | Run production build |
 | `pnpm db:push` | Push schema changes to database |
 | `pnpm db:generate` | Generate migrations |
 | `pnpm db:migrate` | Run migrations |
@@ -132,16 +167,17 @@ All responses follow a consistent structure:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `NODE_ENV` | Yes | `development` or `production` |
-| `PORT` | Yes | Server port (e.g. `3000`) |
+| `PORT` | Yes | Server port (e.g. `8000`) |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `ALLOWED_ORIGINS` | Yes | Comma-separated CORS origins |
 | `BETTER_AUTH_SECRET` | Yes | Secret for signing cookies/tokens (min 32 chars) |
-| `BETTER_AUTH_URL` | Yes | App URL (e.g. `http://localhost:3000`) |
-| `SMTP_HOST` | Prod | SMTP server host (e.g. `smtp.gmail.com`) |
-| `SMTP_PORT` | Prod | SMTP port (587 for TLS, 465 for SSL) |
-| `SMTP_USER` | Prod | SMTP username |
-| `SMTP_PASS` | Prod | SMTP password |
-| `SMTP_FROM` | No | From address (defaults to `SMTP_USER`) |
+| `BETTER_AUTH_URL` | Yes | App URL (e.g. `http://localhost:8000`) |
+| `SMTP_HOST` | Yes | SMTP server host |
+| `SMTP_PORT` | Yes | SMTP port (587 for TLS, 465 for SSL) |
+| `SMTP_SECURE` | Yes | `true` or `false` |
+| `SMTP_USER` | Yes | SMTP username |
+| `SMTP_PASS` | Yes | SMTP password |
+| `EMAIL_FROM` | Yes | From address for outgoing emails |
 
 ## License
 

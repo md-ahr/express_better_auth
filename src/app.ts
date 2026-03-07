@@ -9,6 +9,8 @@ import { wrapAuthResponse } from "./utils/wrapAuthResponse";
 import { resolveAuthPath } from "./config/auth-paths";
 import healthRoute from "./routes/health.route";
 import authRoute from "./routes/auth.route";
+import swaggerUi from "swagger-ui-express";
+import { openApiSpec } from "./config/openapi";
 import { globalErrorHandler } from "./middleware/error.middleware";
 import { AppError } from "./utils/appError";
 import { errorResponse } from "./utils/response";
@@ -74,6 +76,8 @@ app.all(`${AUTH_BASE}/*splat`, (req, res, next) => {
 });
 
 app.use(`${API_PREFIX}/health`, healthRoute);
+
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openApiSpec as object));
 
 app.all('/{*splat}', (req: Request, _res: Response, next: NextFunction) => {
     next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
